@@ -30,7 +30,7 @@ from viam.proto.component.camera import DistortionParameters, IntrinsicParameter
 from viam.resource.base import ResourceBase
 from viam.utils import struct_to_dict
 
-from encode import encode_jpeg, encode_viam_depth
+from encode import deproject, encode_jpeg, encode_pcd, encode_viam_depth
 from frames import FrameSource
 
 COLOR_SOURCE = "color"
@@ -105,11 +105,25 @@ class D405CameraBase(Camera):
         captured_at.FromNanoseconds(int(frame.captured_at * 1e9))
         return images, ResponseMetadata(captured_at=captured_at)
 
+    async def get_point_cloud(
+        self, *, extra: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None, **kwargs,
+    ) -> Tuple[bytes, str]:
+        source = self.source()
+        frame = source.read()
+        points, index = deproject(frame.depth, source.intrinsics)
+        # Each point takes the color of the pixel it came from, which holds
+        # because both streams arrive at one resolution in one frame of
+        # reference: the scene renders them that way, and the hardware source
+        # aligns depth to color before handing the pair up.
+        colors = frame.color.reshape(-1, 3)[index]
+        return encode_pcd(points, colors), CameraMimeType.PCD
+
     async def get_properties(self, *, timeout: Optional[float] = None,
                              **kwargs) -> Camera.Properties:
         intr = self.source().intrinsics
         return Camera.Properties(
-            supports_pcd=False,
+            supports_pcd=True,
             intrinsic_parameters=IntrinsicParameters(
                 width_px=intr.width,
                 height_px=intr.height,
