@@ -28,7 +28,7 @@ from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import ResourceName, ResponseMetadata
 from viam.proto.component.camera import DistortionParameters, IntrinsicParameters
 from viam.resource.base import ResourceBase
-from viam.utils import struct_to_dict
+from viam.utils import ValueTypes, struct_to_dict
 
 from encode import deproject, encode_jpeg, encode_pcd, encode_viam_depth
 from frames import FrameSource
@@ -139,6 +139,12 @@ class D405CameraBase(Camera):
                                                        parameters=[0.0] * 5),
             mime_types=[CameraMimeType.JPEG, CameraMimeType.VIAM_RAW_DEPTH],
         )
+
+    async def do_command(self, command: Mapping[str, ValueTypes], *,
+                         timeout: Optional[float] = None,
+                         **kwargs) -> Mapping[str, ValueTypes]:
+        raise NotImplementedError()
+
 
 def resolution(attrs: Dict[str, Any]) -> Tuple[int, int]:
     """Read the configured stream size, with the module's defaults."""

@@ -2,3 +2,7 @@ viam-sdk==0.80.0
 typing-extensions
 numpy
 pillow
+
+# Only the viam-labs:camera:d405 model needs this. The simulated model runs
+# without it, which is what lets the whole course run with no camera attached.
+pyrealsense2; platform_machine == "x86_64" or platform_machine == "aarch64"

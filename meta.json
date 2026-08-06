@@ -3,7 +3,7 @@
   "module_id": "viam-labs:camera-d405",
   "visibility": "public",
   "url": "https://github.com/viam-labs/viam-103b-camera-d405",
-  "description": "Reference camera module for Viam 103B: an Intel RealSense D405 driver",
+  "description": "Reference camera module for Viam 103B: an Intel RealSense D405 driver with a simulated model and a hardware model",
   "markdown_link": "README.md",
   "entrypoint": "dist/main",
   "first_run": "",
@@ -11,8 +11,14 @@
     {
       "api": "rdk:component:camera",
       "model": "viam-labs:camera:d405-sim",
-      "short_description": "A depth camera with no hardware behind it",
-      "markdown_link": "README.md"
+      "short_description": "A depth camera with no hardware behind it, rendering a scene with recorded dimensions",
+      "markdown_link": "README.md#model-viam-labscamerad405-sim"
+    },
+    {
+      "api": "rdk:component:camera",
+      "model": "viam-labs:camera:d405",
+      "short_description": "Color, depth, and point clouds from a connected Intel RealSense D405",
+      "markdown_link": "README.md#model-viam-labscamerad405"
     }
   ],
   "build": {
