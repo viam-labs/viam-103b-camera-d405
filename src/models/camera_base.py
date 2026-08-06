@@ -11,8 +11,6 @@ The camera API requires three methods of a model:
     get_point_cloud   the scene as points, with the MIME type describing them
     get_properties    the lens, the encodings, and what else this camera can do
 
-Only the first of them is implemented so far.
-
 `close` comes from the resource base and is where the device is handed back.
 viam-server calls it whenever the resource goes away, which includes every
 configuration change: a reconfigured resource is closed and built again rather
@@ -31,7 +29,7 @@ from viam.proto.common import ResourceName, ResponseMetadata
 from viam.utils import struct_to_dict
 from viam.resource.base import ResourceBase
 
-from encode import encode_jpeg
+from encode import encode_jpeg, encode_viam_depth
 from frames import FrameSource
 
 COLOR_SOURCE = "color"
@@ -91,8 +89,14 @@ class D405CameraBase(Camera):
     ) -> Tuple[Sequence[NamedImage], ResponseMetadata]:
         frame = self.source().read()
 
-        images = [NamedImage(COLOR_SOURCE, encode_jpeg(frame.color),
-                             CameraMimeType.JPEG)]
+        wanted = set(filter_source_names or (COLOR_SOURCE, DEPTH_SOURCE))
+        images = []
+        if COLOR_SOURCE in wanted:
+            images.append(NamedImage(COLOR_SOURCE, encode_jpeg(frame.color),
+                                     CameraMimeType.JPEG))
+        if DEPTH_SOURCE in wanted:
+            images.append(NamedImage(DEPTH_SOURCE, encode_viam_depth(frame.depth),
+                                     CameraMimeType.VIAM_RAW_DEPTH))
 
         # The timestamp says when the camera saw this, not when the request
         # arrived. A caller matching a frame to a robot pose depends on it.
