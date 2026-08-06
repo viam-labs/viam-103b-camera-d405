@@ -26,8 +26,9 @@ from viam.components.camera import Camera
 from viam.media.video import CameraMimeType, NamedImage
 from viam.proto.app.robot import ComponentConfig
 from viam.proto.common import ResourceName, ResponseMetadata
-from viam.utils import struct_to_dict
+from viam.proto.component.camera import DistortionParameters, IntrinsicParameters
 from viam.resource.base import ResourceBase
+from viam.utils import struct_to_dict
 
 from encode import encode_jpeg, encode_viam_depth
 from frames import FrameSource
@@ -103,6 +104,27 @@ class D405CameraBase(Camera):
         captured_at = Timestamp()
         captured_at.FromNanoseconds(int(frame.captured_at * 1e9))
         return images, ResponseMetadata(captured_at=captured_at)
+
+    async def get_properties(self, *, timeout: Optional[float] = None,
+                             **kwargs) -> Camera.Properties:
+        intr = self.source().intrinsics
+        return Camera.Properties(
+            supports_pcd=False,
+            intrinsic_parameters=IntrinsicParameters(
+                width_px=intr.width,
+                height_px=intr.height,
+                focal_x_px=intr.fx,
+                focal_y_px=intr.fy,
+                center_x_px=intr.ppx,
+                center_y_px=intr.ppy,
+            ),
+            # Both sources hand up rectified frames, so the model is named and
+            # its coefficients are zero. Reporting numbers here would have a
+            # caller undistort an image that is already straight.
+            distortion_parameters=DistortionParameters(model="brown_conrady",
+                                                       parameters=[0.0] * 5),
+            mime_types=[CameraMimeType.JPEG, CameraMimeType.VIAM_RAW_DEPTH],
+        )
 
 def resolution(attrs: Dict[str, Any]) -> Tuple[int, int]:
     """Read the configured stream size, with the module's defaults."""
