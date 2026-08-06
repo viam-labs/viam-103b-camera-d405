@@ -72,6 +72,7 @@ TABLE_COLOR = (150, 128, 96)
 _SHADE = {"front": 1.00, "top": 0.86, "side": 0.72, "wall": 0.94}
 
 MAX_RANGE_MM = 1000.0        # beyond this the camera reports no reading
+NOMINAL_FPS = 30.0           # what this stream claims through get_properties
 
 
 class SceneSource(FrameSource):
@@ -97,6 +98,10 @@ class SceneSource(FrameSource):
     @property
     def intrinsics(self) -> Intrinsics:
         return self._intrinsics
+
+    @property
+    def frame_rate(self) -> float:
+        return NOMINAL_FPS
 
     def read(self) -> Frame:
         if self._closed:

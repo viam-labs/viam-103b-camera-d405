@@ -23,6 +23,19 @@ MIN_RANGE_MM = 40.0
 MAX_RANGE_MM = 1000.0
 
 
+def _distortion_model(rs, model) -> str:
+    """librealsense's distortion enum, named the way the RDK names them.
+
+    An unmapped value, including "no distortion", comes back empty, which is
+    how a rectified stream says there is nothing to correct.
+    """
+    return {
+        rs.distortion.brown_conrady: "brown_conrady",
+        rs.distortion.modified_brown_conrady: "brown_conrady",
+        rs.distortion.inverse_brown_conrady: "inverse_brown_conrady",
+    }.get(model, "")
+
+
 class RealSenseSource(FrameSource):
     """Color and depth from a connected D405, aligned to the color stream.
 
@@ -53,6 +66,7 @@ class RealSenseSource(FrameSource):
         self._align = rs.align(rs.stream.color)
         self._depth_scale_mm = 1.0
         self._intrinsics: Optional[Intrinsics] = None
+        self._frame_rate = float(fps)
         self._start()
 
     # --- device lifecycle --------------------------------------------------
@@ -84,8 +98,16 @@ class RealSenseSource(FrameSource):
         # describes the model, not the camera on the desk.
         video = profile.get_stream(rs.stream.color).as_video_stream_profile()
         i = video.get_intrinsics()
-        self._intrinsics = Intrinsics(width=i.width, height=i.height,
-                                      fx=i.fx, fy=i.fy, ppx=i.ppx, ppy=i.ppy)
+        self._intrinsics = Intrinsics(
+            width=i.width, height=i.height,
+            fx=i.fx, fy=i.fy, ppx=i.ppx, ppy=i.ppy,
+            distortion_model=_distortion_model(rs, i.model),
+            # librealsense reports coefficients in OpenCV order
+            # [k1, k2, p1, p2, k3]; the RDK reads all the radial terms first.
+            distortion_coeffs=(i.coeffs[0], i.coeffs[1], i.coeffs[4],
+                               i.coeffs[2], i.coeffs[3]),
+        )
+        self._frame_rate = float(video.fps())
 
         # Raw depth units are device-specific: convert once, here, so every
         # reading above this file is already in millimeters.
@@ -124,6 +146,10 @@ class RealSenseSource(FrameSource):
     # --- the source contract ----------------------------------------------
 
     @property
+    def frame_rate(self) -> float:
+        return self._frame_rate
+
+    @property
     def intrinsics(self) -> Intrinsics:
         if self._intrinsics is None:
             raise RuntimeError("the camera has not been started")
@@ -158,6 +184,10 @@ class RealSenseSource(FrameSource):
         # says so, and dropping these keeps them out of the point cloud.
         depth_mm[(depth_mm < MIN_RANGE_MM) | (depth_mm > MAX_RANGE_MM)] = 0.0
 
+        # Host time, deliberately. librealsense's frame timestamps come from a
+        # domain that varies with the device and its metadata support, so they
+        # are not always a Unix epoch. A caller correlating a frame with a robot
+        # pose needs a clock it shares with the machine, and this is that clock.
         return Frame(color=color,
                      depth=np.rint(depth_mm).astype(np.uint16),
-                     captured_at=color_frame.get_timestamp() / 1000.0 or time.time())
+                     captured_at=time.time())

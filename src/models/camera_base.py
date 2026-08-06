@@ -25,8 +25,12 @@ from google.protobuf.timestamp_pb2 import Timestamp
 from viam.components.camera import Camera
 from viam.media.video import CameraMimeType, NamedImage
 from viam.proto.app.robot import ComponentConfig
-from viam.proto.common import ResourceName, ResponseMetadata
-from viam.proto.component.camera import DistortionParameters, IntrinsicParameters
+from viam.proto.common import Orientation, ResourceName, ResponseMetadata, Vector3
+from viam.proto.component.camera import (
+    DistortionParameters,
+    ExtrinsicParameters,
+    IntrinsicParameters,
+)
 from viam.resource.base import ResourceBase
 from viam.utils import ValueTypes, struct_to_dict
 
@@ -65,6 +69,9 @@ class D405CameraBase(Camera):
 
     async def close(self) -> None:  # type: ignore[override]
         if self._source is not None:
+            # Worth a log line: this is the half of a reconfiguration that is
+            # easy to leave out, and easy to miss when it is missing.
+            self.logger.info("releasing the frame source")
             self._source.close()
             self._source = None
 
@@ -121,7 +128,8 @@ class D405CameraBase(Camera):
 
     async def get_properties(self, *, timeout: Optional[float] = None,
                              **kwargs) -> Camera.Properties:
-        intr = self.source().intrinsics
+        source = self.source()
+        intr = source.intrinsics
         return Camera.Properties(
             supports_pcd=True,
             intrinsic_parameters=IntrinsicParameters(
@@ -132,11 +140,20 @@ class D405CameraBase(Camera):
                 center_x_px=intr.ppx,
                 center_y_px=intr.ppy,
             ),
-            # Both sources hand up rectified frames, so the model is named and
-            # its coefficients are zero. Reporting numbers here would have a
-            # caller undistort an image that is already straight.
-            distortion_parameters=DistortionParameters(model="brown_conrady",
-                                                       parameters=[0.0] * 5),
+            distortion_parameters=DistortionParameters(
+                model=intr.distortion_model,
+                parameters=list(intr.distortion_coeffs),
+            ),
+            # Both streams are already in one frame of reference: the scene
+            # renders them through one lens, and the hardware source aligns
+            # depth to color before handing the pair up. An identity transform
+            # is the honest way to say so, and it is what a caller composing a
+            # detection into the machine's frame system reads.
+            extrinsic_parameters=ExtrinsicParameters(
+                translation=Vector3(x=0.0, y=0.0, z=0.0),
+                orientation=Orientation(o_x=0.0, o_y=0.0, o_z=1.0, theta=0.0),
+            ),
+            frame_rate=source.frame_rate,
             mime_types=[CameraMimeType.JPEG, CameraMimeType.VIAM_RAW_DEPTH],
         )
 

@@ -95,6 +95,21 @@ def test_properties_describe_the_configured_stream():
     assert intrinsics.focal_x_px > 0
 
 
+def test_properties_answer_every_field_a_caller_reads():
+    properties = asyncio.run(build().get_properties())
+
+    assert list(properties.mime_types) == [CameraMimeType.JPEG,
+                                           CameraMimeType.VIAM_RAW_DEPTH]
+    assert properties.frame_rate > 0
+    # A rendered stream is already rectified, so there is no model and nothing
+    # to correct. An empty model is how the platform hears "leave it alone".
+    assert properties.distortion_parameters.model == ""
+    assert list(properties.distortion_parameters.parameters) == []
+    # One lens, so depth and color share an origin.
+    translation = properties.extrinsic_parameters.translation
+    assert (translation.x, translation.y, translation.z) == (0.0, 0.0, 0.0)
+
+
 def test_intrinsics_follow_the_configured_resolution():
     small = asyncio.run(build(width_px=320, height_px=240).get_properties())
     large = asyncio.run(build(width_px=640, height_px=480).get_properties())

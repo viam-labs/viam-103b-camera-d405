@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
+from typing import Tuple
 
 import numpy as np
 
@@ -33,6 +34,13 @@ class Intrinsics:
     fy: float
     ppx: float
     ppy: float
+    # What is left to correct after the stream was rectified. An empty model
+    # means nothing is: that is what the shipped RealSense module reports when
+    # librealsense says the stream carries no distortion, and it keeps a caller
+    # from undistorting an image that is already straight. When there is a
+    # model, the RDK reads the coefficients as [k1, k2, k3, p1, p2].
+    distortion_model: str = ""
+    distortion_coeffs: Tuple[float, ...] = ()
 
     @classmethod
     def from_fov(cls, width: int, height: int, hfov_deg: float) -> "Intrinsics":
@@ -63,6 +71,11 @@ class FrameSource(abc.ABC):
     @abc.abstractmethod
     def intrinsics(self) -> Intrinsics:
         """The parameters of the stream this source is producing right now."""
+
+    @property
+    def frame_rate(self) -> float:
+        """Frames per second this source produces, for `get_properties`."""
+        return 0.0
 
     @abc.abstractmethod
     def read(self) -> Frame:
