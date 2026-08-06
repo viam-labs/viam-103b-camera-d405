@@ -192,3 +192,38 @@ def test_every_pixel_with_a_reading_becomes_one_point():
     depth = read_depth(camera)
     points = point_cloud_points(camera)
     assert len(points) == int((depth > 0).sum())
+
+
+# --- failures ---------------------------------------------------------------
+
+def test_an_absent_device_says_so():
+    camera = build(fail="absent")
+    with pytest.raises(RuntimeError, match="no camera found"):
+        asyncio.run(camera.get_images())
+
+
+def test_a_dropped_device_says_something_different():
+    camera = build(fail="dropped")
+    with pytest.raises(RuntimeError, match="mid-stream"):
+        asyncio.run(camera.get_images())
+
+
+def test_a_closed_camera_does_not_answer():
+    camera = build()
+    asyncio.run(camera.close())
+    with pytest.raises(RuntimeError, match="closed"):
+        asyncio.run(camera.get_images())
+
+
+def test_validation_rejects_a_configuration_that_is_wrong_on_its_face():
+    from viam.proto.app.robot import ComponentConfig
+    from viam.utils import dict_to_struct
+
+    for attrs, message in (
+        ({"width_px": -1}, "positive"),
+        ({"hfov_deg": 0}, "between 0 and 180"),
+        ({"fail": "sometimes"}, "fail must be one of"),
+    ):
+        config = ComponentConfig(name="camera", attributes=dict_to_struct(attrs))
+        with pytest.raises(ValueError, match=message):
+            D405Sim.validate_config(config)

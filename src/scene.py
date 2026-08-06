@@ -81,11 +81,17 @@ class SceneSource(FrameSource):
         width: stream width in pixels.
         height: stream height in pixels.
         hfov_deg: horizontal field of view used to derive the intrinsics.
+        fail: a failure to simulate on every ``read`` — ``"absent"`` for a
+            device that was never there, ``"dropped"`` for one that vanished
+            mid-stream. Used by the failure exercises so both are reproducible
+            with no hardware.
     """
 
     def __init__(self, width: int = 640, height: int = 480,
-                 hfov_deg: float = DEFAULT_HFOV_DEG) -> None:
+                 hfov_deg: float = DEFAULT_HFOV_DEG, fail: str = "") -> None:
         self._intrinsics = Intrinsics.from_fov(width, height, hfov_deg)
+        self._fail = fail
+        self._closed = False
         self._color, self._depth = _render(self._intrinsics)
 
     @property
@@ -93,10 +99,21 @@ class SceneSource(FrameSource):
         return self._intrinsics
 
     def read(self) -> Frame:
+        if self._closed:
+            raise RuntimeError("scene source is closed")
+        if self._fail == "absent":
+            raise RuntimeError(
+                "no camera found: check that the device is plugged in and that "
+                "the serial number in the configuration matches one that is"
+            )
+        if self._fail == "dropped":
+            raise RuntimeError("the camera stopped responding mid-stream")
         # The scene does not move, so every frame is the same render with a
         # fresh timestamp. A real source produces a new one each call.
         return Frame(color=self._color, depth=self._depth, captured_at=time.time())
 
+    def close(self) -> None:
+        self._closed = True
 
 
 def _render(intr: Intrinsics) -> Tuple[np.ndarray, np.ndarray]:
