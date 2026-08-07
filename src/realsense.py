@@ -216,10 +216,17 @@ class RealSenseSource(FrameSource):
 
     def close(self) -> None:
         if self._pipeline is not None:
+            pipeline, self._pipeline = self._pipeline, None
             try:
-                self._pipeline.stop()
-            finally:
-                self._pipeline = None
+                pipeline.stop()
+            except Exception:
+                # A pipeline whose device was unplugged mid-stream refuses to
+                # stop: librealsense has already torn it down and raises
+                # "stop() cannot be called before start()". Letting that out of
+                # here replaces the real error, the one that says the camera
+                # stopped delivering frames, with an internal complaint that
+                # tells the caller nothing. The handle is dropped either way.
+                pass
 
     # --- the source contract ----------------------------------------------
 

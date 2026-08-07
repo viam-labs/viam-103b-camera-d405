@@ -252,3 +252,23 @@ def test_a_read_failure_reaches_the_machine_log(caplog):
             asyncio.run(camera.get_images())
     assert "could not read a frame" in caplog.text
     assert "mid-stream" in caplog.text
+
+
+def test_close_does_not_mask_the_error_that_caused_it():
+    """A pipeline that refuses to stop must not replace the real failure.
+
+    librealsense raises "stop() cannot be called before start()" when the
+    device was unplugged mid-stream. Releasing the handle is best-effort; the
+    error the caller needs is the one that says the camera went away.
+    """
+    import realsense
+
+    class Unstoppable:
+        def stop(self):
+            raise RuntimeError("stop() cannot be called before start()")
+
+    source = realsense.RealSenseSource.__new__(realsense.RealSenseSource)
+    source._pipeline = Unstoppable()
+    source.close()                      # must not raise
+    assert source._pipeline is None
+    source.close()                      # and must stay safe to call twice
