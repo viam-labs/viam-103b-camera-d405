@@ -253,7 +253,10 @@ class RealSenseSource(FrameSource):
             self.close()
             raise RuntimeError(
                 f"the camera stopped delivering frames: {exc}. The next call "
-                f"will try to reopen it.{_usb_warning(self._usb_type)}"
+                # Ask again rather than trusting what the link was at startup.
+                # A camera unplugged from USB 3 and replugged into USB 2 keeps
+                # the old value, which is exactly the case worth warning about.
+                f"will try to reopen it.{_usb_warning(self._usb_type_of(self._rs))}"
             ) from exc
 
         aligned = self._align.process(frames)
