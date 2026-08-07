@@ -23,6 +23,30 @@ MIN_RANGE_MM = 40.0
 MAX_RANGE_MM = 1000.0
 
 
+def _usb_type(rs, device) -> str:
+    """How the camera negotiated its USB link, as the device reports it.
+
+    "3.2" is a full-speed link. Anything starting with "2" means the camera came
+    up on a USB 2 port or through a USB 2 cable or hub, where the bandwidth for
+    two streams at speed is not there. That failure otherwise arrives as a
+    timeout or an unresolvable request, which sends the reader looking at the
+    wrong thing entirely.
+    """
+    try:
+        return str(device.get_info(rs.camera_info.usb_type_descriptor))
+    except Exception:                                    # pragma: no cover
+        return ""
+
+
+def _usb_warning(usb_type: str) -> str:
+    """A sentence to add to an error, when the link speed is the likely cause."""
+    if usb_type and usb_type.startswith("2"):
+        return (f" This camera negotiated USB {usb_type}, not USB 3. A USB 2 "
+                f"link cannot carry two streams at the higher resolutions, so "
+                f"check the port, the cable, and any hub in between.")
+    return ""
+
+
 def _distortion_model(rs, model) -> str:
     """librealsense's distortion enum, named the way the RDK names them.
 
@@ -65,6 +89,7 @@ class RealSenseSource(FrameSource):
         self._pipeline = None
         self._align = rs.align(rs.stream.color)
         self._depth_scale_mm = 1.0
+        self._usb_type = ""
         self._intrinsics: Optional[Intrinsics] = None
         self._frame_rate = float(fps)
         self._start()
@@ -91,6 +116,7 @@ class RealSenseSource(FrameSource):
             raise RuntimeError(
                 f"could not start the camera at {self._width}x{self._height} "
                 f"at {self._fps} fps: {exc}. {self._available(rs)}"
+                f"{_usb_warning(self._usb_type_of(rs))}"
             ) from exc
 
         # The device knows its own calibration. Reading it here is what keeps
@@ -111,9 +137,22 @@ class RealSenseSource(FrameSource):
 
         # Raw depth units are device-specific: convert once, here, so every
         # reading above this file is already in millimeters.
-        depth_sensor = profile.get_device().first_depth_sensor()
+        device = profile.get_device()
+        depth_sensor = device.first_depth_sensor()
         self._depth_scale_mm = depth_sensor.get_depth_scale() * 1000.0
+        self._usb_type = _usb_type(rs, device)
         self._pipeline = pipeline
+
+    def _usb_type_of(self, rs) -> str:
+        """The link speed of the camera we were asked for, without opening it."""
+        try:
+            for device in rs.context().query_devices():
+                if (not self._serial or
+                        device.get_info(rs.camera_info.serial_number) == self._serial):
+                    return _usb_type(rs, device)
+        except Exception:                                # pragma: no cover
+            pass
+        return ""
 
     def _available(self, rs) -> str:
         """What the camera we were asked for can stream, for an error message.
@@ -207,7 +246,7 @@ class RealSenseSource(FrameSource):
             self.close()
             raise RuntimeError(
                 f"the camera stopped delivering frames: {exc}. The next call "
-                "will try to reopen it."
+                f"will try to reopen it.{_usb_warning(self._usb_type)}"
             ) from exc
 
         aligned = self._align.process(frames)
