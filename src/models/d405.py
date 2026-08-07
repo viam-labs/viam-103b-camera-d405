@@ -61,4 +61,5 @@ class D405(D405CameraBase, EasyResource):
             height=height,
             serial_number=str(attrs.get("serial_number", "")),
             fps=int(attrs.get("fps", DEFAULT_FPS)),
+            require_usb3=bool(attrs.get("require_usb3", False)),
         )

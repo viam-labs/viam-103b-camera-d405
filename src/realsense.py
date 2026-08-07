@@ -72,7 +72,8 @@ class RealSenseSource(FrameSource):
     """
 
     def __init__(self, width: int = 640, height: int = 480,
-                 serial_number: str = "", fps: int = 30) -> None:
+                 serial_number: str = "", fps: int = 30,
+                 require_usb3: bool = False) -> None:
         try:
             import pyrealsense2 as rs
         except ImportError as exc:                       # pragma: no cover
@@ -90,6 +91,9 @@ class RealSenseSource(FrameSource):
         self._align = rs.align(rs.stream.color)
         self._depth_scale_mm = 1.0
         self._usb_type = ""
+        self._require_usb3 = require_usb3
+        # Anything worth saying once, at startup, rather than on every failure.
+        self.startup_warning = ""
         self._intrinsics: Optional[Intrinsics] = None
         self._frame_rate = float(fps)
         self._start()
@@ -141,6 +145,21 @@ class RealSenseSource(FrameSource):
         depth_sensor = device.first_depth_sensor()
         self._depth_scale_mm = depth_sensor.get_depth_scale() * 1000.0
         self._usb_type = _usb_type(rs, device)
+
+        if self._usb_type.startswith("2"):
+            warning = _usb_warning(self._usb_type).strip()
+            if self._require_usb3:
+                # Refusing to build is the only way a module can put a resource
+                # into UNHEALTHY: viam-server sets that state when construction
+                # fails, and there is no runtime call for it. Off by default,
+                # because a camera on a slow link still works for some
+                # configurations and that call belongs to whoever configured it.
+                pipeline.stop()
+                raise RuntimeError(
+                    f"require_usb3 is set and {warning}"
+                )
+            self.startup_warning = warning
+
         self._pipeline = pipeline
 
     def _usb_type_of(self, rs) -> str:

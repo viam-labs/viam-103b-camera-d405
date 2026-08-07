@@ -67,6 +67,11 @@ class D405CameraBase(Camera):
         """
         self = cls(config.name)
         self._source = self.build_source(struct_to_dict(config.attributes))
+        # Anything the source noticed while opening that is worth knowing before
+        # the first failure rather than after it.
+        warning = getattr(self._source, "startup_warning", "")
+        if warning:
+            self.logger.warning(warning)
         return self
 
     async def close(self) -> None:  # type: ignore[override]

@@ -83,10 +83,17 @@ reading**. Points, like everything else on the Viam platform, are millimeters.
 | `height_px` | int | Optional | Requested stream height. Default 480 |
 | `fps` | int | Optional | Requested frame rate. Default 30 |
 | `serial_number` | string | Optional | Which camera to open when more than one is connected. Empty means the first one found |
+| `require_usb3` | bool | Optional | Refuse to build when the camera negotiated a USB 2 link, which puts the resource into UNHEALTHY with an error naming the port. Default false: a camera on a slow link still works for some configurations, and that call belongs to whoever configured it |
 
 Validation rejects the settings that are wrong on their face. Whether this
 camera can stream a given size is answered by the device when the stream opens,
 and the error lists what it does support.
+
+A camera on a USB 2 link opens and then fails to deliver frames, so the driver
+names the link in that error and logs it once at startup. `require_usb3` turns
+that from a warning into a refusal to build, which is the only way a module can
+put a resource into `UNHEALTHY`: `viam-server` sets that state when
+construction fails, and there is no call for it at runtime.
 
 ## API
 
