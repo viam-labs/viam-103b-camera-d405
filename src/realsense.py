@@ -146,8 +146,10 @@ class RealSenseSource(FrameSource):
                 # because a camera on a slow link still works for some
                 # configurations and that call belongs to whoever configured it.
                 pipeline.stop()
+                # The warning is written to follow a full stop. Joined onto a
+                # clause it needs its first letter back down again.
                 raise RuntimeError(
-                    f"require_usb3 is set and {warning}"
+                    "require_usb3 is set and " + warning[0].lower() + warning[1:]
                 )
             self.startup_warning = warning
 
