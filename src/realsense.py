@@ -116,21 +116,60 @@ class RealSenseSource(FrameSource):
         self._pipeline = pipeline
 
     def _available(self, rs) -> str:
-        """What the connected devices can actually stream, for an error message."""
+        """What the camera we were asked for can stream, for an error message.
+
+        Only that camera. With two devices plugged in, listing every mode on
+        the bus produces a list the configured camera does not support, which
+        is worse than saying nothing.
+        """
         try:
-            devices = rs.context().query_devices()
-            if len(devices) == 0:
+            devices = list(rs.context().query_devices())
+            if not devices:
                 return ("No RealSense camera is connected: check the cable and "
                         "that the device shows up in rs-enumerate-devices.")
+
+            if self._serial:
+                devices = [d for d in devices
+                           if d.get_info(rs.camera_info.serial_number) == self._serial]
+                if not devices:
+                    connected = ", ".join(
+                        f"{d.get_info(rs.camera_info.name)} ({d.get_info(rs.camera_info.serial_number)})"
+                        for d in rs.context().query_devices())
+                    return (f"No camera with serial {self._serial} is connected. "
+                            f"Connected: {connected}.")
+            elif len(devices) > 1:
+                names = ", ".join(
+                    f"{d.get_info(rs.camera_info.name)} ({d.get_info(rs.camera_info.serial_number)})"
+                    for d in devices)
+                return (f"{len(devices)} cameras are connected and no "
+                        f"serial_number is configured, so the first one was "
+                        f"used: {names}.")
+
+            device = devices[0]
+            name = device.get_info(rs.camera_info.name)
             modes = set()
-            for device in devices:
-                for sensor in device.query_sensors():
-                    for profile in sensor.get_stream_profiles():
-                        video = profile.as_video_stream_profile()
-                        if video:
-                            modes.add((video.width(), video.height(), video.fps()))
-            listed = sorted(modes, reverse=True)[:12]
-            return "This camera supports: " + ", ".join(
+            for sensor in device.query_sensors():
+                for profile in sensor.get_stream_profiles():
+                    video = profile.as_video_stream_profile()
+                    if video:
+                        modes.add((video.width(), video.height(), video.fps()))
+            # If the camera does support what was asked for, the resolution is
+            # not the problem and a list of modes is a red herring. The usual
+            # cause is that something else already has the device open, which
+            # is a different thing for the reader to go and check.
+            if (self._width, self._height, self._fps) in modes:
+                return (f"{name} does support {self._width}x{self._height} at "
+                        f"{self._fps} fps, so something else is likely holding "
+                        f"the device open. Check for another viam-server, "
+                        f"module, or script using it.")
+
+            # Put the modes at the requested resolution first. Truncating a
+            # sorted list can cut off the very mode the reader needs, which is
+            # the one nearest what they asked for.
+            wanted = [m for m in modes if m[0] == self._width and m[1] == self._height]
+            other = [m for m in modes if m not in wanted]
+            listed = sorted(wanted, reverse=True) + sorted(other, reverse=True)[:8]
+            return f"{name} supports: " + ", ".join(
                 f"{w}x{h}@{f}" for w, h, f in listed
             )
         except Exception:                                # pragma: no cover
