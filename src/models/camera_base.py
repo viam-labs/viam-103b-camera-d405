@@ -19,6 +19,8 @@ than updated in place.
 
 from __future__ import annotations
 
+import asyncio
+
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from google.protobuf.timestamp_pb2 import Timestamp
@@ -85,17 +87,21 @@ class D405CameraBase(Camera):
             raise RuntimeError(f"{self.name} has no frame source: it was closed")
         return self._source
 
-    def read(self) -> Frame:
-        """Read a frame, and put any failure in the machine's log.
+    async def read(self) -> Frame:
+        """Read a frame off a worker thread, and log any failure.
 
-        A failure inside `get_images` travels to whoever called it and nowhere
-        else. That is the wrong place for it to stop: the person diagnosing a
-        camera that went quiet is reading the machine's LOGS tab, not holding
-        the client that got the error. So log it here, then re-raise for the
-        caller who does need it.
+        Off a thread because a frame wait blocks, and a module serves every
+        camera configured on it from one event loop. A camera that has gone
+        quiet blocks for the whole timeout, and doing that on the loop makes
+        one camera's outage into every camera's outage: a healthy camera in the
+        same module answers only once the sick one has finished timing out.
+
+        The failure is logged here as well as raised. It travels to whoever
+        called `get_images`, but the person diagnosing a camera that went quiet
+        is reading the machine's LOGS tab, not holding that client.
         """
         try:
-            return self.source().read()
+            return await asyncio.to_thread(self.source().read)
         except Exception as exc:
             self.logger.warning("could not read a frame: %s", exc)
             raise
@@ -110,7 +116,7 @@ class D405CameraBase(Camera):
         timeout: Optional[float] = None,
         **kwargs,
     ) -> Tuple[Sequence[NamedImage], ResponseMetadata]:
-        frame = self.read()
+        frame = await self.read()
 
         wanted = set(filter_source_names or (COLOR_SOURCE, DEPTH_SOURCE))
         images = []
@@ -132,7 +138,7 @@ class D405CameraBase(Camera):
         timeout: Optional[float] = None, **kwargs,
     ) -> Tuple[bytes, str]:
         source = self.source()
-        frame = self.read()
+        frame = await self.read()
         points, index = deproject(frame.depth, source.intrinsics)
         # Each point takes the color of the pixel it came from, which holds
         # because both streams arrive at one resolution in one frame of
