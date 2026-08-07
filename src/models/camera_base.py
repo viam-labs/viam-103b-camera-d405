@@ -35,7 +35,7 @@ from viam.resource.base import ResourceBase
 from viam.utils import ValueTypes, struct_to_dict
 
 from encode import deproject, encode_jpeg, encode_pcd, encode_viam_depth
-from frames import FrameSource
+from frames import Frame, FrameSource
 
 COLOR_SOURCE = "color"
 DEPTH_SOURCE = "depth"
@@ -85,6 +85,21 @@ class D405CameraBase(Camera):
             raise RuntimeError(f"{self.name} has no frame source: it was closed")
         return self._source
 
+    def read(self) -> Frame:
+        """Read a frame, and put any failure in the machine's log.
+
+        A failure inside `get_images` travels to whoever called it and nowhere
+        else. That is the wrong place for it to stop: the person diagnosing a
+        camera that went quiet is reading the machine's LOGS tab, not holding
+        the client that got the error. So log it here, then re-raise for the
+        caller who does need it.
+        """
+        try:
+            return self.source().read()
+        except Exception as exc:
+            self.logger.warning("could not read a frame: %s", exc)
+            raise
+
     # --- the camera API ----------------------------------------------------
 
     async def get_images(
@@ -95,7 +110,7 @@ class D405CameraBase(Camera):
         timeout: Optional[float] = None,
         **kwargs,
     ) -> Tuple[Sequence[NamedImage], ResponseMetadata]:
-        frame = self.source().read()
+        frame = self.read()
 
         wanted = set(filter_source_names or (COLOR_SOURCE, DEPTH_SOURCE))
         images = []
@@ -117,7 +132,7 @@ class D405CameraBase(Camera):
         timeout: Optional[float] = None, **kwargs,
     ) -> Tuple[bytes, str]:
         source = self.source()
-        frame = source.read()
+        frame = self.read()
         points, index = deproject(frame.depth, source.intrinsics)
         # Each point takes the color of the pixel it came from, which holds
         # because both streams arrive at one resolution in one frame of

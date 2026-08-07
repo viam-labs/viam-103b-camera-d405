@@ -242,3 +242,13 @@ def test_validation_rejects_a_configuration_that_is_wrong_on_its_face():
         config = ComponentConfig(name="camera", attributes=dict_to_struct(attrs))
         with pytest.raises(ValueError, match=message):
             D405Sim.validate_config(config)
+
+
+def test_a_read_failure_reaches_the_machine_log(caplog):
+    """A camera that goes quiet has to say so where somebody is looking."""
+    camera = build(fail="dropped")
+    with caplog.at_level("WARNING"):
+        with pytest.raises(RuntimeError):
+            asyncio.run(camera.get_images())
+    assert "could not read a frame" in caplog.text
+    assert "mid-stream" in caplog.text
