@@ -25,6 +25,24 @@ from scene import BOXES, TABLE_Y_MM, WALL_Z_MM
 WIDTH, HEIGHT = 640, 480
 NEAR_BOX = BOXES[0]
 
+# The scene's dimensions, written down again on purpose.
+#
+# Importing them from scene.py would make these tests unfalsifiable: move the
+# wall and both the render and the expectation move together, so the test
+# passes and nobody learns that the scene changed. These numbers are also
+# quoted in the course text, so a change has to be made in three places
+# deliberately rather than in one place by accident.
+WALL_MM = 600
+NEAR_BOX_FACE_MM = 250
+NEAR_BOX_WIDTH_MM = 180
+
+
+def test_the_scene_still_matches_what_the_course_says():
+    """Guard the numbers the pages promise, so a scene edit cannot pass quietly."""
+    assert WALL_Z_MM == WALL_MM
+    assert NEAR_BOX.front_z_mm == NEAR_BOX_FACE_MM
+    assert NEAR_BOX.width_mm == NEAR_BOX_WIDTH_MM
+
 
 def build(**attrs) -> D405Sim:
     """Construct the simulated model the way viam-server would."""
@@ -124,7 +142,7 @@ def test_intrinsics_follow_the_configured_resolution():
 def test_the_wall_reads_its_recorded_distance():
     depth = read_depth(build())
     # The top-left corner looks past the table and the boxes, at the wall.
-    assert depth[0, 0] == pytest.approx(WALL_Z_MM, abs=1)
+    assert depth[0, 0] == pytest.approx(WALL_MM, abs=1)
 
 
 def near_box_face(points: np.ndarray) -> np.ndarray:
@@ -142,7 +160,7 @@ def test_the_near_box_front_face_reads_its_recorded_distance():
     face = near_box_face(point_cloud_points(build()))
 
     assert len(face) > 500, "the near box's front face should fill part of the frame"
-    assert face[:, 2].mean() == pytest.approx(NEAR_BOX.front_z_mm, abs=1)
+    assert face[:, 2].mean() == pytest.approx(NEAR_BOX_FACE_MM, abs=1)
 
 
 def test_the_near_box_measures_its_recorded_width():
@@ -151,7 +169,7 @@ def test_the_near_box_measures_its_recorded_width():
     measured = face[:, 0].max() - face[:, 0].min()
     # One pixel at 250 mm is about 0.7 mm across, so the face is measured to
     # within a pixel of the width the scene records.
-    assert measured == pytest.approx(NEAR_BOX.width_mm, abs=2)
+    assert measured == pytest.approx(NEAR_BOX_WIDTH_MM, abs=2)
 
 
 def test_nothing_in_the_scene_is_nearer_than_the_table_edge():
@@ -160,8 +178,8 @@ def test_nothing_in_the_scene_is_nearer_than_the_table_edge():
     # The nearest thing the camera sees is the table running under the lens,
     # not either box: a lower minimum than this means a ray went somewhere the
     # scene does not describe.
-    assert readings.min() < NEAR_BOX.front_z_mm
-    assert readings.max() == pytest.approx(WALL_Z_MM, abs=1)
+    assert readings.min() < NEAR_BOX_FACE_MM
+    assert readings.max() == pytest.approx(WALL_MM, abs=1)
 
 
 def test_the_table_sits_where_the_scene_says():
