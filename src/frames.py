@@ -64,8 +64,27 @@ class Frame:
     captured_at: float
 
 
+def link_warning(link: str) -> str:
+    """A sentence to add to an error when the link speed is the likely cause.
+
+    Shared by every source, because "what did this device negotiate" is part of
+    what a source knows about itself, and a caller reading a timeout needs it
+    from whichever source produced the timeout.
+    """
+    if link and link.startswith("2"):
+        return (f" This camera negotiated USB {link}, not USB 3. A USB 2 "
+                f"link cannot carry two streams at the higher resolutions, so "
+                f"check the port, the cable, and any hub in between.")
+    return ""
+
+
 class FrameSource(abc.ABC):
     """Where frames come from. One implementation per kind of camera."""
+
+    @property
+    def link(self) -> str:
+        """The link this source negotiated, as the device reports it."""
+        return ""
 
     @property
     @abc.abstractmethod

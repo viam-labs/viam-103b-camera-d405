@@ -272,3 +272,41 @@ def test_close_does_not_mask_the_error_that_caused_it():
     source.close()                      # must not raise
     assert source._pipeline is None
     source.close()                      # and must stay safe to call twice
+
+
+def test_the_flaky_camera_comes_back():
+    """The recovery objective needs a failure that ends, not one that repeats."""
+    camera = build(fail="flaky")
+    outcomes = []
+    for _ in range(14):
+        try:
+            asyncio.run(camera.get_images(filter_source_names=["color"]))
+            outcomes.append(True)
+        except RuntimeError:
+            outcomes.append(False)
+    assert outcomes[0] is False, "it should start in a bad patch"
+    assert True in outcomes, "and it should come back without a reconfiguration"
+    assert outcomes[:3] == [False, False, False]
+    assert all(outcomes[3:13]), outcomes
+
+
+def test_the_slow_camera_blocks_before_it_fails():
+    """The coupling objective needs a failure that takes time to arrive."""
+    import time
+    camera = build(fail="slow", slow_seconds=1)
+    started = time.time()
+    with pytest.raises(RuntimeError, match="no frame within"):
+        asyncio.run(camera.get_images())
+    assert time.time() - started >= 1.0
+
+
+def test_a_simulated_slow_link_explains_itself():
+    """The link-diagnosis objective, without a USB bus."""
+    camera = build(fail="dropped", link="2.1")
+    with pytest.raises(RuntimeError, match="negotiated USB 2.1"):
+        asyncio.run(camera.get_images())
+
+    quiet = build(fail="dropped")
+    with pytest.raises(RuntimeError) as caught:
+        asyncio.run(quiet.get_images())
+    assert "negotiated USB" not in str(caught.value)

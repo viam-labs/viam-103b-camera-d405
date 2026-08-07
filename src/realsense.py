@@ -15,7 +15,7 @@ from typing import Optional
 
 import numpy as np
 
-from frames import Frame, FrameSource, Intrinsics
+from frames import Frame, FrameSource, Intrinsics, link_warning
 
 # The D405 is a short-range camera. Readings outside its working range are
 # reported as no reading rather than as geometry.
@@ -36,15 +36,6 @@ def _usb_type(rs, device) -> str:
         return str(device.get_info(rs.camera_info.usb_type_descriptor))
     except Exception:                                    # pragma: no cover
         return ""
-
-
-def _usb_warning(usb_type: str) -> str:
-    """A sentence to add to an error, when the link speed is the likely cause."""
-    if usb_type and usb_type.startswith("2"):
-        return (f" This camera negotiated USB {usb_type}, not USB 3. A USB 2 "
-                f"link cannot carry two streams at the higher resolutions, so "
-                f"check the port, the cable, and any hub in between.")
-    return ""
 
 
 def _distortion_model(rs, model) -> str:
@@ -120,7 +111,7 @@ class RealSenseSource(FrameSource):
             raise RuntimeError(
                 f"could not start the camera at {self._width}x{self._height} "
                 f"at {self._fps} fps: {exc}. {self._available(rs)}"
-                f"{_usb_warning(self._usb_type_of(rs))}"
+                f"{link_warning(self._usb_type_of(rs))}"
             ) from exc
 
         # The device knows its own calibration. Reading it here is what keeps
@@ -147,7 +138,7 @@ class RealSenseSource(FrameSource):
         self._usb_type = _usb_type(rs, device)
 
         if self._usb_type.startswith("2"):
-            warning = _usb_warning(self._usb_type).strip()
+            warning = link_warning(self._usb_type).strip()
             if self._require_usb3:
                 # Refusing to build is the only way a module can put a resource
                 # into UNHEALTHY: viam-server sets that state when construction
@@ -250,6 +241,10 @@ class RealSenseSource(FrameSource):
     # --- the source contract ----------------------------------------------
 
     @property
+    def link(self) -> str:
+        return self._usb_type
+
+    @property
     def frame_rate(self) -> float:
         return self._frame_rate
 
@@ -275,7 +270,7 @@ class RealSenseSource(FrameSource):
                 # Ask again rather than trusting what the link was at startup.
                 # A camera unplugged from USB 3 and replugged into USB 2 keeps
                 # the old value, which is exactly the case worth warning about.
-                f"will try to reopen it.{_usb_warning(self._usb_type_of(self._rs))}"
+                f"will try to reopen it.{link_warning(self._usb_type_of(self._rs))}"
             ) from exc
 
         aligned = self._align.process(frames)

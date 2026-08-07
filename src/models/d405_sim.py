@@ -15,9 +15,9 @@ from viam.utils import struct_to_dict
 
 from frames import FrameSource
 from models.camera_base import D405CameraBase, resolution
-from scene import DEFAULT_HFOV_DEG, SceneSource
+from scene import DEFAULT_HFOV_DEG, DEFAULT_LINK, SceneSource
 
-FAIL_MODES = ("", "absent", "dropped")
+FAIL_MODES = ("", "absent", "dropped", "flaky", "slow")
 
 
 class D405Sim(D405CameraBase, EasyResource):
@@ -54,4 +54,6 @@ class D405Sim(D405CameraBase, EasyResource):
             height=height,
             hfov_deg=float(attrs.get("hfov_deg", DEFAULT_HFOV_DEG)),
             fail=str(attrs.get("fail", "")),
+            link=str(attrs.get("link", DEFAULT_LINK)),
+            slow_seconds=float(attrs.get("slow_seconds", 6.0)),
         )

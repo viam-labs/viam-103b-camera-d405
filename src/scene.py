@@ -18,7 +18,7 @@ from typing import List, Tuple
 
 import numpy as np
 
-from frames import Frame, FrameSource, Intrinsics
+from frames import Frame, FrameSource, Intrinsics, link_warning
 
 # The D405 family's published depth field of view, used to give the simulated
 # stream a plausible lens. It describes this scene renderer, not a measurement
@@ -73,6 +73,9 @@ _SHADE = {"front": 1.00, "top": 0.86, "side": 0.72, "wall": 0.94}
 
 MAX_RANGE_MM = 1000.0        # beyond this the camera reports no reading
 NOMINAL_FPS = 30.0           # what this stream claims through get_properties
+DEFAULT_LINK = "3.2"         # the link this stream reports having negotiated
+FLAKY_BAD = 3                # reads that fail before the flaky camera returns
+FLAKY_GOOD = 10              # reads that succeed before it drops again
 
 
 class SceneSource(FrameSource):
@@ -89,9 +92,13 @@ class SceneSource(FrameSource):
     """
 
     def __init__(self, width: int = 640, height: int = 480,
-                 hfov_deg: float = DEFAULT_HFOV_DEG, fail: str = "") -> None:
+                 hfov_deg: float = DEFAULT_HFOV_DEG, fail: str = "",
+                 link: str = DEFAULT_LINK, slow_seconds: float = 6.0) -> None:
         self._intrinsics = Intrinsics.from_fov(width, height, hfov_deg)
         self._fail = fail
+        self._link = link
+        self._slow_seconds = slow_seconds
+        self._reads = 0
         self._closed = False
         self._color, self._depth = _render(self._intrinsics)
 
@@ -103,6 +110,10 @@ class SceneSource(FrameSource):
     def frame_rate(self) -> float:
         return NOMINAL_FPS
 
+    @property
+    def link(self) -> str:
+        return self._link
+
     def read(self) -> Frame:
         if self._closed:
             raise RuntimeError("scene source is closed")
@@ -112,7 +123,27 @@ class SceneSource(FrameSource):
                 "the serial number in the configuration matches one that is"
             )
         if self._fail == "dropped":
-            raise RuntimeError("the camera stopped responding mid-stream")
+            raise RuntimeError("the camera stopped responding mid-stream"
+                               + link_warning(self._link))
+
+        self._reads += 1
+        if self._fail == "flaky":
+            # Fail a burst, then recover, then do it again. A single failure
+            # would show the error; a cycle shows the recovery, which is the
+            # behavior worth watching more than once.
+            if (self._reads - 1) % (FLAKY_BAD + FLAKY_GOOD) < FLAKY_BAD:
+                raise RuntimeError(
+                    "the camera stopped delivering frames. The next call will "
+                    "try to reopen it." + link_warning(self._link))
+
+        if self._fail == "slow":
+            # Block first, then fail. Blocking is the point: it is what makes
+            # one camera's outage reach the other resources a module serves.
+            time.sleep(self._slow_seconds)
+            raise RuntimeError(
+                f"the camera stopped delivering frames: no frame within "
+                f"{self._slow_seconds:.0f}s. The next call will try to reopen "
+                f"it." + link_warning(self._link))
         # The scene does not move, so every frame is the same render with a
         # fresh timestamp. A real source produces a new one each call.
         return Frame(color=self._color, depth=self._depth, captured_at=time.time())
